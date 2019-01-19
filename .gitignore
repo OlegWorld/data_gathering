@@ -1,0 +1,4 @@
+*.pyc
+*.cfg
+.vscode
+.idea

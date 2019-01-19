@@ -124,6 +124,7 @@ import logging
 
 import sys
 import json
+import numpy as np
 import pandas as pd
 import requests
 import matplotlib.pyplot as plt
@@ -134,7 +135,6 @@ from storages.file_storage import FileStorage
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 SCRAPPED_FILE = 'scrapped_data.json'
 TABLE_FORMAT_FILE = 'data.csv'
 
@@ -143,6 +143,7 @@ def gather_process():
     logger.info("gather")
     scrapper = Scrapper()
     scrapper.scrap_process(SCRAPPED_FILE)
+
 
 def convert_data_to_table_format():
     logger.info("transform")
@@ -186,17 +187,8 @@ def convert_data_to_table_format():
 
                 csv_writer.writerow(row)
 
-def stats_data():
-    logger.info("stats")
 
-    matches_stat = pd.read_csv('data.csv', sep='\t')
-    int_list = [[int(i) for i in j[1:-1].split(',  ')] for j in matches_stat['radiant_pick']]
-    matches_stat['radiant_pick'] = int_list
-    int_list = [[int(i) for i in j[1:-1].split(',  ')] for j in matches_stat['dire_pick']]
-    matches_stat['dire_pick'] = int_list
-    del int_list
-
-    # let's see, for example, the pick distribution for winners
+def hero_stats(matches_stat):
     radiant_win_stat = matches_stat[matches_stat['radiant_win']]
     dire_win_stat = matches_stat[matches_stat['radiant_win'] == False]
 
@@ -211,7 +203,7 @@ def stats_data():
         else:
             winning_hero_distr[hero] = 1 / len(winning_heroes)
 
-    #let's get hero names for better view
+    # let's get hero names for better view
     result = requests.get('https://api.opendota.com/api/heroes')
     data = result.json()
     names = []
@@ -224,6 +216,69 @@ def stats_data():
 
     hero_stat.sort_values('hero_picks', ascending=False).plot(kind='bar')
     plt.show()
+
+
+def wins_count(matches_stat):
+    print()
+
+    total = len(matches_stat)
+    radiant_wins = np.sum(matches_stat['radiant_win'])
+    dire_wins = len(matches_stat) - radiant_wins
+    r_proc = (radiant_wins / total) * 100
+    d_proc = (dire_wins / total) * 100
+
+    print('total matches: {}'.format(total))
+    print('radiant wins: {r} ({r_p}%) \t dire wins: {d} ({d_p}%)'.format(r=radiant_wins, d=dire_wins, r_p=r_proc, d_p=d_proc))
+    print()
+
+
+def score_count(matches_stat):
+    radiant_mean_score = np.mean(matches_stat['radiant_score'])
+    radiant_std_score = np.std(matches_stat['radiant_score'])
+    dire_mean_score = np.mean(matches_stat['dire_score'])
+    dire_std_score = np.std(matches_stat['dire_score'])
+
+    radiant_legend = 'radiant mean: {r_m}, std: {r_s}'.format(r_m=radiant_mean_score, r_s=radiant_std_score)
+    dire_legend = 'dire mean: {d_m}, std: {d_s}'.format(d_m=dire_mean_score, d_s=dire_std_score)
+
+    plt.hist(matches_stat['radiant_score'], alpha=0.5, bins='auto', label=radiant_legend)
+    plt.hist(matches_stat['dire_score'], alpha=0.5, bins='auto', label=dire_legend)
+    plt.legend()
+    plt.show()
+
+
+def most_winning_team(matches_stat):
+    radiant_win_teams = matches_stat['radiant_team'][matches_stat['radiant_win']]
+    dire_win_teams = matches_stat['dire_team'][~matches_stat['radiant_win']]
+    radiant_win_teams.dropna(inplace=True)
+    dire_win_teams.dropna(inplace=True)
+
+    winners = np.hstack((radiant_win_teams, dire_win_teams))
+    team, position = np.unique(winners,return_inverse=True)
+    counts = np.bincount(position)
+    maxpos = counts.argmax()
+
+    print('Most winning team: {}'.format(team[maxpos]))
+
+
+def stats_data():
+    logger.info("stats")
+
+    matches_stat = pd.read_csv('data.csv', sep='\t')
+    int_list = [[int(i) for i in j[1:-1].split(',  ')] for j in matches_stat['radiant_pick']]
+    matches_stat['radiant_pick'] = int_list
+    int_list = [[int(i) for i in j[1:-1].split(',  ')] for j in matches_stat['dire_pick']]
+    matches_stat['dire_pick'] = int_list
+    del int_list
+
+    wins_count(matches_stat)
+
+    most_winning_team(matches_stat)
+
+    score_count(matches_stat)
+
+    hero_stats(matches_stat)
+
 
 if __name__ == '__main__':
     logger.info("Work started")
